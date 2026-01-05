@@ -1,0 +1,25 @@
+# Complete Database Schema Report - Payment Processing System
+
+This document provides a comprehensive overview of all tables in the payment processing system database schema.
+
+## TABLE OF CONTENTS
+1. [Admin Schema](#admin-schema)
+2. [User Schema](#user-schema)
+3. [AI Schema](#ai-schema)
+4. [Dynamic KYC Schema](#dynamic-kyc-schema)
+5. [Invoice Schema](#invoice-schema)
+6. [Limits Schema](#limits-schema)
+7. [Log Schema](#log-schema)
+8. [Master Data Schema](#master-data-schema)
+9. [Notification Schema](#notification-schema)
+10. [Payment Link Schema](#payment-link-schema)
+11. [Payout Schema](#payout-schema)
+12. [Provider Schema](#provider-schema)
+13. [Risk Schema](#risk-schema)
+14. [Role Permission Schema](#role-permission-schema)
+15. [Routing Schema](#routing-schema)
+16. [RP User Schema](#rp-user-schema)
+17. [Telegram Bot Schema](#telegram-bot-schema)
+18. [Ticket Schema](#ticket-schema)
+19. [Transaction Schema](#transaction-schema)
+20. [Wallet Schema](#wallet-schema)
