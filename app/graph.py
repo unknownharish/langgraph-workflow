@@ -4,8 +4,9 @@ from langgraph.graph import StateGraph, END
 from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel as BaseClass, Field
 from langchain_community.document_loaders import TextLoader
-from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import Chroma
+from langchain_community.embeddings import HuggingFaceEmbeddings
+
 
 # Load documents
 BASE_DIR = Path(__file__).resolve().parent
@@ -15,15 +16,22 @@ loader = TextLoader(str(SCHEMA_FILE))
 documents = loader.load()
 
 # Create embeddings
-embeddings = OpenAIEmbeddings(
-    model="text-embedding-3-large"
+embeddings = HuggingFaceEmbeddings(
+    model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
 
-vectorstore = Chroma.from_documents(
-    documents=documents,
-    embedding=embeddings,
-    persist_directory="./chroma_db"
-)
+vectorstore = None
+
+def get_vectorstore():
+    global vectorstore
+    if vectorstore is None:
+        vectorstore = Chroma.from_documents(
+            documents=documents,
+            embedding=embeddings,
+            persist_directory="./chroma_db"
+        )
+    return vectorstore
+
 
 # 1. Define state
 class GraphState(TypedDict):
@@ -45,11 +53,11 @@ llm = ChatGoogleGenerativeAI(
 # 3. Node function
 def llm_node(state: GraphState) -> GraphState:
    
-    retriever = vectorstore.as_retriever(
+    retriever = get_vectorstore().as_retriever(
     search_kwargs={"k": 4}
      )
    
-    relevant_docs = retriever.get_relevant_documents(state["question"])
+    relevant_docs = retriever.invoke(state["question"])
     context = "\n".join([doc.page_content for doc in relevant_docs])
     prompt = f"""you are postgress db query creater with best optimization and clear cut to requirement .,
       now here are the tables with their user table.

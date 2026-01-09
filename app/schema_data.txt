@@ -23,3 +23,785 @@ This document provides a comprehensive overview of all tables in the payment pro
 18. [Ticket Schema](#ticket-schema)
 19. [Transaction Schema](#transaction-schema)
 20. [Wallet Schema](#wallet-schema)
+
+---
+
+## ADMIN SCHEMA (admin.prisma)
+
+### 1. Admin Table (`admins`)
+**Description:** Core admin user management table storing administrator account information, authentication details, and system access control.
+
+**Fields:**
+- `id` (Int, Primary Key) - Auto-increment admin identifier
+- `name` (String, Unique, VarChar(190)) - Admin full name
+- `email` (String, Unique, VarChar(190)) - Admin email address for login
+- `password` (String, VarChar(190)) - Encrypted password hash
+- `role_id` (Int, Optional) - Foreign key to Role table for permissions
+- `email_verified_at` (DateTime, Optional) - Email verification timestamp
+- `otp` (String, Optional, VarChar(10)) - One-time password for authentication
+- `otp_expiry` (DateTime, Optional) - OTP expiration timestamp
+- `is_two_fa_enabled` (Boolean, Default: false) - Two-factor authentication flag
+- `two_fa_token` (String, Optional) - 2FA token for authentication
+- `is_blocked` (Boolean, Default: false) - Account suspension status
+- `is_deleted` (Boolean, Default: false) - Soft delete flag
+- `created_at` (DateTime, Default: now()) - Record creation timestamp
+- `update_at` (DateTime, Default: now(), Auto-update) - Last modification timestamp
+
+**Relationships:**
+- One-to-many with AdminSessions, AIConversations, DynamicRatePayout, AdminAuditLogs, ConnectorChangeLogs, AppErrorLogs, Notification, TransactionFlagLog
+- Many-to-one with Role
+
+### 2. AdminSessions Table (`admin_sessions`)
+**Description:** Tracks active admin sessions for security monitoring and session management across devices.
+
+**Fields:**
+- `id` (String, Primary Key, UUID) - Unique session identifier
+- `admin_id` (Int) - Foreign key to Admin table
+- `device` (String) - Device information for session tracking
+- `os` (String) - Operating system information
+- `expires_at` (DateTime) - Session expiration timestamp
+- `created_at` (DateTime, Default: now()) - Session creation time
+- `updated_at` (DateTime, Auto-update) - Last session update time
+
+**Relationships:**
+- Many-to-one with Admin
+
+---
+
+## USER SCHEMA (user.prisma)
+
+### 1. User Table (`users`)
+**Description:** Main user/merchant table containing account information, KYC status, business details, and payment processing configuration.
+
+**Fields:**
+- `id` (BigInt, Primary Key) - Auto-increment user identifier
+- `parent_id` (BigInt, Optional) - Hierarchical user relationship (parent user)
+- `email` (String, Unique, VarChar(190)) - User email address
+- `name` (String, VarChar(190)) - User full name
+- `password` (String, Optional, VarChar(190)) - Encrypted password hash
+- `otp` (String, Optional, VarChar(10)) - One-time password
+- `otp_expiry` (DateTime, Optional) - OTP expiration timestamp
+- `is_two_fa_enabled` (Boolean, Default: false) - Two-factor authentication status
+- `two_fa_token` (String, Optional) - 2FA authentication token
+- `email_verified_at` (DateTime, Optional) - Email verification timestamp
+- `is_blocked` (Boolean, Default: false) - Account blocking status
+- `unique_id` (String, Unique, UUID) - Unique identifier for external references
+- `profile_image` (String, Optional) - Profile picture path
+- `avatar_url` (String, Optional) - Avatar image URL
+- `oauth_id` (String, Optional, VarChar(190)) - OAuth provider identifier
+- `provider` (String, Optional, VarChar(50)) - OAuth provider name
+- `kyc_reject_reason` (Json, Optional) - KYC rejection details
+- `is_profile_completed` (Boolean, Default: false) - Profile completion status
+- `is_kyc_completed` (Int, Optional, SmallInt) - KYC status (0=rejected, 1=approved, 2=pending)
+- `video_kyc_required` (Boolean, Default: true) - Video KYC requirement flag
+- `profile_step` (Int, Default: 0, SmallInt) - Current onboarding step (0-5)
+- `agreement_signed_at` (DateTime, Optional) - Agreement signing timestamp
+- `agreement_status` (Int, Default: 0, SmallInt) - Agreement status (0=pending, 1=sent, 2=signed)
+- `agreement_remark` (String, Optional, VarChar(191)) - Agreement notes
+- `permissions` (Json, Optional) - User-specific permissions
+- `entity_type` (Entity Enum, Optional) - Business entity type (INDIVIDUAL/PARTNERSHIP/COMPANY)
+- `current_profile_id` (BigInt, Optional) - Active user profile reference
+- `encryption_key` (String, Optional, Unique, VarChar(35)) - Data encryption key
+- `referral_partner_id` (Int, Optional) - Referral partner reference
+- `referral_partner_commission` (Decimal, Optional, 5,2) - Commission percentage
+- `settlement_fee` (Decimal, Optional, 5,2) - Settlement fee percentage
+- `test_secret_key` (String, Optional, Unique, VarChar(65)) - Testing API key
+- `ip_enabled` (Boolean, Default: true) - IP whitelisting feature
+- `bin_enabled` (Boolean, Default: true) - BIN validation feature
+- `card_wl_enabled` (Boolean, Default: false) - Card whitelisting feature
+- `webhook_hash` (String, Optional, VarChar(64)) - Webhook authentication hash
+- `is_password_changed` (Boolean, Default: false) - Password change tracking
+- `penalty_amount` (Decimal, Default: 0.0, 10,2) - Penalty amount in account
+- `send_transaction_email` (Boolean, Default: false) - Email notification preference
+- `chargeback_protection` (Boolean, Default: false) - Chargeback protection service
+- `social_media_info` (Json, Optional, JsonB) - Social media profile data
+- `notification_emails` (Json, Optional, JsonB) - Notification email addresses
+- `app_logo` (String, Optional, VarChar(500)) - Application logo path
+- `integration_status` (Int, Default: 0) - Integration status (0=Pending, 1=Process, 2=Live)
+- `created_at` (DateTime, Default: now()) - Account creation timestamp
+- `updated_at` (DateTime, Default: now(), Auto-update) - Last update timestamp
+- `is_deleted` (Boolean, Default: false) - Soft delete flag
+
+### 2. UserSessions Table (`user_sessions`)
+**Description:** Manages active user sessions for security and multi-device access tracking.
+
+**Fields:**
+- `id` (String, Primary Key, UUID) - Session identifier
+- `user_id` (BigInt) - Foreign key to User table
+- `device` (String) - Device information
+- `os` (String) - Operating system
+- `expires_at` (DateTime) - Session expiration time
+- `created_at` (DateTime, Default: now()) - Session creation time
+- `updated_at` (DateTime, Auto-update) - Last update time
+
+### 3. UserKyc Table (`user_kycs`)
+**Description:** Stores comprehensive KYC (Know Your Customer) information for compliance and verification purposes.
+
+**Key Fields:**
+- `user_id` (BigInt, Unique) - Foreign key to User table
+- `entity_type` (Entity Enum) - Business entity type
+- `country_of_incorporation` (String) - Incorporation country
+- `date_of_incorporation` (DateTime) - Incorporation date
+- `website` (String) - Business website URL
+- `registration_number` (String) - Business registration number
+- `bank_name` (String) - Bank name for settlements
+- `account_number` (String) - Bank account number
+- `bic_code` (String) - Bank identifier code
+- `iban_number` (String) - International bank account number
+
+### 4. UserProfile Table (`user_profiles`)
+**Description:** Manages multiple business profiles per user account for different business verticals.
+
+**Fields:**
+- `id` (BigInt, Primary Key) - Profile identifier
+- `user_id` (BigInt) - Foreign key to User table
+- `is_primary` (Boolean, Default: false) - Primary profile flag
+- `industry_id` (Int, Optional) - Foreign key to Industry table
+- `secret_key` (String, Optional, Unique, VarChar(65)) - API secret key
+
+### 5. MerchantConnector Table (`merchant_connectors`)
+**Description:** Links users to payment processing connectors with specific configurations and rates.
+
+**Key Fields:**
+- `user_id` (BigInt) - Foreign key to User table
+- `user_profile_id` (BigInt) - Foreign key to UserProfile table
+- `terminal_id` (String, Unique) - Terminal identifier
+- `connector_id` (Int) - Foreign key to Connector table
+- `status` (Int, SmallInt) - Status (0=rejected, 1=approved, 2=pending, 3=rates assigned)
+- `rates` (Json, JsonB) - Processing rates configuration
+- `payment_method` (ConnectorType Enum) - Payment method type
+
+---
+
+## AI SCHEMA (ai.prisma)
+
+### 1. UserAIEmbeddings Table (`user_ai_embeddings`)
+**Description:** Stores AI embeddings for semantic search and content matching capabilities.
+
+**Fields:**
+- `id` (Int, Primary Key) - Embedding record identifier
+- `name` (String, Unique, VarChar(100)) - Embedding name
+- `content` (Json, JsonB) - Content data for embedding
+- `category` (String, VarChar(50)) - Content category
+- `embeddings` (Vector(1536), Optional) - AI embedding vector
+- `admin_only` (Boolean, Default: false) - Admin-only access flag
+
+### 2. AIConversations Table (`ai_conversations`)
+**Description:** Tracks AI conversation sessions between users/admins and the AI system.
+
+**Fields:**
+- `id` (String, Primary Key, UUID) - Conversation identifier
+- `user_id` (BigInt, Optional) - Foreign key to User table
+- `admin_id` (Int, Optional) - Foreign key to Admin table
+- `title` (String, Optional) - Conversation title
+- `by_admin` (Boolean, Default: false) - Admin-initiated conversation flag
+
+### 3. AIMessages Table (`ai_messages`)
+**Description:** Stores individual messages within AI conversations.
+
+**Fields:**
+- `id` (BigInt, Primary Key) - Message identifier
+- `ai_conversation_id` (String, UUID) - Foreign key to AIConversations
+- `tool_used` (String, Optional, VarChar(50)) - AI tool used
+- `content` (Json, JsonB) - Message content
+- `token_usage` (Json, Optional) - Token consumption data
+
+### 4. AIUnAnsweredQuestions Table (`ai_unanswered_questions`)
+**Description:** Logs questions that the AI system couldn't answer for improvement purposes.
+
+**Fields:**
+- `id` (BigInt, Primary Key) - Question record identifier
+- `question` (String) - Unanswered question text
+- `type` (AIQuestionPlatform Enum) - Platform source (TELEGRAM/SLACK/WEBSITE)
+
+---
+
+## DYNAMIC KYC SCHEMA (dynamicKyc.prisma)
+
+### 1. FormTemplate Table (`form_templates`)
+**Description:** Defines dynamic form structures for different entity types and KYC requirements.
+
+**Fields:**
+- `id` (Int, Primary Key) - Template identifier
+- `name` (String) - Template name (e.g., "Entity Details", "Associate Details")
+- `entity_type` (String) - Target entity type ("user", "rp_user")
+- `sub_type` (String) - Entity subtype ("INDIVIDUAL", "COMPANY")
+
+### 2. Field Table (`fields`)
+**Description:** Defines dynamic form fields with validation rules and nested structures.
+
+**Fields:**
+- `id` (Int, Primary Key) - Field identifier
+- `form_template_id` (Int) - Foreign key to FormTemplate
+- `parent_field_id` (Int, Optional) - For nested fields
+- `name` (String) - Field identifier
+- `label` (String) - Display label
+- `type` (String) - Field type ("text", "email", "array")
+- `is_required` (Boolean) - Required field flag
+- `validation_rules` (Json) - Validation configuration
+
+### 3. Submission Table (`submissions`)
+**Description:** Stores user submissions for dynamic forms.
+
+**Fields:**
+- `id` (Int, Primary Key) - Submission identifier
+- `user_id` (BigInt, Optional) - Foreign key to User table
+- `rp_user_id` (Int, Optional) - Foreign key to RpUser table
+- `form_template_id` (Int) - Foreign key to FormTemplate
+- `data` (Json, Optional) - Submitted form data
+- `status` (String) - Submission status ("draft", "submitted", "approved")
+
+---
+
+## INVOICE SCHEMA (invoice.prisma)
+
+### 1. Invoices Table (`invoices`)
+**Description:** Manages invoice generation and billing for payment processing services.
+
+**Fields:**
+- `id` (BigInt, Primary Key) - Invoice identifier
+- `invoice_id` (String, Unique, UUID) - External invoice reference
+- `user_id` (BigInt) - Foreign key to User table
+- `profile_id` (BigInt) - Foreign key to UserProfile table
+- `receiver_email` (String, VarChar(190)) - Invoice recipient email
+- `receiver_name` (String, VarChar(190)) - Recipient name
+- `receiver_address` (Json, JsonB) - Billing address
+- `amount` (Decimal, 10,2) - Invoice amount
+- `currency` (String, VarChar(5)) - Invoice currency
+- `taxes` (Json, JsonB) - Tax calculations
+- `discounts` (Json, JsonB) - Applied discounts
+- `items` (Json, JsonB) - Invoice line items
+- `recurring_type` (InvoiceRecurringType Enum, Optional) - Recurring billing type
+- `is_published` (Boolean, Default: false) - Publication status
+
+---
+
+## LIMITS SCHEMA (limits.prisma)
+
+### 1. UserLimits Table (`user_limits`)
+**Description:** Manages transaction limits and risk controls for user accounts.
+
+**Fields:**
+- `id` (Int, Primary Key) - Limit configuration identifier
+- `user_id` (BigInt, Unique) - Foreign key to User table
+- `min_trx_amount` (Int, Optional) - Minimum transaction amount
+- `max_trx_amount` (Int, Optional) - Maximum transaction amount
+- `per_day_txn_limit` (Int, Optional) - Daily transaction count limit
+- `per_day_card_limit` (Int, Optional) - Daily card transaction limit
+- `per_day_email_limit` (Int, Optional) - Daily email-based transaction limit
+- `per_day_total` (Int, Optional) - Daily total transaction limit
+- `daily_card_decline_limit` (Int, Optional) - Daily card decline limit
+- `daily_email_decline_limit` (Int, Optional) - Daily email decline limit
+- `per_week_card_limit` (Int, Optional) - Weekly card limit
+- `per_week_email_limit` (Int, Optional) - Weekly email limit
+- `per_month_card_limit` (Int, Optional) - Monthly card limit
+- `per_month_email_limit` (Int, Optional) - Monthly email limit
+- `surcharge_amount` (Decimal, Default: 0.0, 10,2) - Fixed surcharge amount
+- `surcharge_percentage` (Decimal, Default: 0.0, 10,2) - Percentage surcharge
+- `conditional_surcharges` (Json, JsonB) - Conditional surcharge rules
+
+---
+
+## LOG SCHEMA (log.prisma)
+
+### 1. JobErrorLogs Table (`job_error_logs`)
+**Description:** Logs errors from background job processing for system monitoring.
+
+**Fields:**
+- `id` (Int, Primary Key) - Log entry identifier
+- `job_id` (String) - Background job identifier
+- `job_name` (String, VarChar(191)) - Job name
+- `queue_name` (String, VarChar(191)) - Queue name
+- `description` (String, Optional) - Error description
+- `error` (Json, JsonB) - Error details
+
+### 2. AdminAuditLogs Table (`admin_audit_logs`)
+**Description:** Tracks admin actions for compliance and audit purposes.
+
+**Fields:**
+- `id` (Int, Primary Key) - Audit log identifier
+- `admin_id` (Int) - Foreign key to Admin table
+- `event` (String, VarChar(255)) - Event description
+- `details` (Json, JsonB) - Event details
+
+### 3. TransactionFlagLog Table (`transaction_flag_logs`)
+**Description:** Logs transaction flagging and unflagging actions for dispute management.
+
+**Fields:**
+- `id` (BigInt, Primary Key) - Log entry identifier
+- `transaction_id` (String, VarChar(20)) - Transaction identifier
+- `flag_type` (DisputeType Enum) - Flag type (CHARGEBACK/REFUND/SUSPICIOUS)
+- `flag_action` (FlagAction Enum) - Action taken (APPLIED/REMOVED)
+- `action_by_role` (ReplierRole Enum) - Role performing action (ADMIN/USER)
+- `admin_id` (Int, Optional) - Admin performing action
+- `reason` (String, Optional, VarChar(500)) - Flag reason
+
+---
+
+## MASTER DATA SCHEMA (master.prisma)
+
+### 1. Industry Table (`master_industries`)
+**Description:** Master list of business industries for user classification.
+
+**Fields:**
+- `id` (Int, Primary Key) - Industry identifier
+- `name` (String, Unique, VarChar(190)) - Industry name
+- `is_active` (Boolean, Default: true) - Active status
+- `is_deleted` (Boolean, Default: false) - Soft delete flag
+
+### 2. Country Table (`master_countries`)
+**Description:** Master list of countries with currency and regional information.
+
+**Fields:**
+- `id` (Int, Primary Key) - Country identifier
+- `name` (String, Unique, VarChar(191)) - Country name
+- `country_code` (String, VarChar(10)) - Country code
+- `iso_two` (String, VarChar(5)) - ISO 2-letter code
+- `iso_three` (String, VarChar(5)) - ISO 3-letter code
+- `currency_name` (String, VarChar(191)) - Currency name
+- `currency_code` (String, VarChar(10)) - Currency code
+- `currency_symbol` (String, VarChar(60)) - Currency symbol
+- `continent` (String, VarChar(20)) - Continent name
+
+### 3. CurrencyRates Table (`currency_rates`)
+**Description:** Stores real-time currency exchange rates for multi-currency processing.
+
+**Fields:**
+- `id` (Int, Primary Key) - Rate record identifier
+- `source` (String, VarChar(5)) - Base currency
+- `currency` (String, Unique, VarChar(5)) - Target currency
+- `converted_amount` (Float) - Exchange rate
+
+### 4. EmailTemplate Table (`email_templates`)
+**Description:** Manages email templates for system communications.
+
+**Fields:**
+- `id` (Int, Primary Key) - Template identifier
+- `name` (String, Unique, VarChar(100)) - Template name
+- `subject` (String, VarChar(250)) - Email subject
+- `status` (Boolean, Default: false) - Active status
+- `content_html` (String, Text) - HTML content
+- `template_type` (String, Default: "CUSTOM", VarChar(50)) - Template type
+
+---
+
+## NOTIFICATION SCHEMA (notification.prisma)
+
+### 1. Notification Table (`notifications`)
+**Description:** Manages system notifications for users, admins, and RP users.
+
+**Fields:**
+- `id` (BigInt, Primary Key) - Notification identifier
+- `user_id` (BigInt, Optional) - Foreign key to User table
+- `admin_id` (Int, Optional) - Foreign key to Admin table
+- `rp_user_id` (Int, Optional) - Foreign key to RpUser table
+- `message` (String, VarChar(255)) - Notification message
+- `type` (NotificationTypes Enum) - Notification type
+- `entity` (NotificationEntity Enum, Optional) - Target entity
+- `is_read` (Boolean, Default: false) - Read status
+
+---
+
+## PAYMENT LINK SCHEMA (paymentLink.prisma)
+
+### 1. PaymentLinkTemplates Table (`payment_link_templates`)
+**Description:** Manages reusable payment link templates with customizable designs.
+
+**Fields:**
+- `id` (String, Primary Key, UUID) - Template identifier
+- `name` (String, Unique, VarChar(191)) - Template name
+- `description` (String, VarChar(500)) - Template description
+- `image` (String, VarChar(291)) - Template preview image
+- `status` (Boolean, Default: false) - Active status
+
+### 2. UserPaymentLinks Table (`user_payment_links`)
+**Description:** Stores generated payment links for specific transactions.
+
+**Fields:**
+- `id` (BigInt, Primary Key) - Payment link identifier
+- `payment_link_id` (String, Unique, VarChar(26)) - External link reference
+- `user_id` (BigInt) - Foreign key to User table
+- `profile_id` (BigInt) - Foreign key to UserProfile table
+- `payment_link` (String, Text) - Generated payment URL
+- `payment_method` (ConnectorType, Default: CARD) - Payment method
+- `amount` (Decimal, 6,2) - Payment amount
+- `currency` (String, VarChar(5)) - Payment currency
+- `expiry_date` (DateTime, Optional) - Link expiration
+- `status` (Boolean, Default: true) - Active status
+- `is_live_link` (Boolean, Default: true) - Live/test mode flag
+
+---
+
+## PAYOUT SCHEMA (payout.prisma)
+
+### 1. AdminPayoutCalculation Table (`admin_payout_calculations`)
+**Description:** Calculates merchant payouts based on transaction volumes and fees.
+
+**Key Fields:**
+- `user_id` (BigInt) - Foreign key to User table
+- `connector_id` (Int) - Foreign key to Connector table
+- `merchant_connector_id` (BigInt) - Foreign key to MerchantConnector table
+- `transaction_date` (DateTime) - Calculation date
+- `currency` (String, VarChar(5)) - Processing currency
+- `total_success_count` (Int) - Successful transaction count
+- `total_success_amount` (Decimal, 20,2) - Total successful amount
+- `total_decline_count` (Int) - Declined transaction count
+- `mdr_rate` (Decimal, 20,2) - Merchant discount rate
+- `mdr_amount` (Decimal, 20,2) - Total MDR amount
+- `rolling_reserve_rate` (Decimal, 20,2) - Rolling reserve rate
+- `rolling_reserve_amount` (Decimal, 20,2) - Reserved amount
+- `net_amount` (Decimal, 20,2) - Net payout amount
+
+### 2. AdminMerchantPayout Table (`admin_merchant_payouts`)
+**Description:** Final payout records for merchant settlements.
+
+**Fields:**
+- `id` (BigInt, Primary Key) - Payout identifier
+- `invoice_number` (String, Unique, VarChar(20)) - Invoice reference
+- `user_id` (BigInt) - Foreign key to User table
+- `payout_date` (DateTime, Optional) - Payout processing date
+- `payout_start_date` (DateTime, Optional) - Period start date
+- `payout_end_date` (DateTime, Optional) - Period end date
+- `net_amount_usd` (Decimal, 20,2) - Net amount in USD
+- `settlement_fee` (Decimal, 20,2) - Settlement processing fee
+- `paid_amount` (Decimal, 20,2) - Final paid amount
+- `is_paid` (Boolean, Default: false) - Payment status
+
+### 3. UPITransactionCalculation Table (`upi_transaction_calculation`)
+**Description:** Specialized calculation for UPI transactions in Indian market.
+
+**Fields:**
+- `user_id` (BigInt) - Foreign key to User table
+- `merchant_connector_id` (BigInt) - Foreign key to MerchantConnector
+- `success_txn_count` (Int) - Successful UPI transaction count
+- `success_txn_amount` (Decimal, 10,2) - Total successful amount
+- `mdr` (Decimal, 4,2) - Merchant discount rate for UPI
+- `gst` (Decimal, 4,2) - GST rate
+- `rolling_reserve` (Decimal, 4,2) - Rolling reserve rate
+- `net_amount` (Decimal, 10,2) - Net settlement amount
+
+---
+
+## PROVIDER SCHEMA (provider.prisma)
+
+### 1. Provider Table (`providers`)
+**Description:** Master list of payment service providers and their configurations.
+
+**Fields:**
+- `id` (Int, Primary Key) - Provider identifier
+- `name` (String, VarChar(191)) - Provider name
+- `filename` (String, VarChar(191)) - Configuration filename
+- `fields` (Json) - Required configuration fields
+- `status` (Boolean, Default: true) - Active status
+
+### 2. Connector Table (`connectors`)
+**Description:** Specific connector configurations for different payment methods and providers.
+
+**Fields:**
+- `id` (Int, Primary Key) - Connector identifier
+- `name` (String, VarChar(191)) - Connector name
+- `provider_id` (Int) - Foreign key to Provider table
+- `config` (Json) - Connector configuration
+- `status` (Boolean, Default: true) - Active status
+- `currency` (String, VarChar(5)) - Supported currency
+- `accepted_card_types` (String Array) - Supported card types
+- `min_amount` (Decimal, 10,2) - Minimum transaction amount
+- `max_amount` (Decimal, 10,2) - Maximum transaction amount
+- `type` (ConnectorType, Default: CARD) - Connector type
+- `flow_type` (ConnectorFlowType, Default: PAYIN) - Flow direction
+- `crypto_flow` (Int Array) - Crypto flow types
+- `supported_crypto_currencies` (String Array) - Supported cryptocurrencies
+
+---
+
+## RISK SCHEMA (risk.prisma)
+
+### 1. Risk Table (`risk_management`)
+**Description:** Stores risk assessment data and blocked entities for fraud prevention.
+
+**Fields:**
+- `id` (Int, Primary Key) - Risk record identifier
+- `user_id` (BigInt, Optional) - Foreign key to User table
+- `risk_value` (String, Optional) - Risk identifier (email, card, IP, etc.)
+- `risk_type` (RiskType Enum, Optional) - Risk type (EMAIL/CARD/BIN/DOMAIN/IP)
+- `is_admin` (Boolean, Default: false) - Admin-added risk flag
+
+---
+
+## ROLE PERMISSION SCHEMA (rolePermission.prisma)
+
+### 1. Role Table (`roles`)
+**Description:** Defines user roles for access control across different user types.
+
+**Fields:**
+- `id` (Int, Primary Key) - Role identifier
+- `name` (String, Unique) - Role name
+- `type` (PermissionType Enum) - Role type (ADMIN/USER/RPUSER)
+
+### 2. Permission Table (`permissions`)
+**Description:** Defines granular permissions for system features and API endpoints.
+
+**Fields:**
+- `id` (Int, Primary Key) - Permission identifier
+- `name` (String, Unique) - Permission name
+- `identifier` (String, Unique, VarChar(10)) - Short identifier
+- `route` (String) - API route
+- `method` (String) - HTTP method
+- `type` (PermissionType Enum) - Permission type
+
+### 3. RolePermission Table (`roles_has_permissions`)
+**Description:** Links roles to specific permissions for access control.
+
+**Fields:**
+- `id` (Int, Primary Key) - Assignment identifier
+- `type` (PermissionType Enum) - Assignment type
+- `role_id` (Int) - Foreign key to Role table
+- `permission_id` (Int) - Foreign key to Permission table
+
+---
+
+## ROUTING SCHEMA (routing.prisma)
+
+### 1. Routing Table (`routing`)
+**Description:** Manages intelligent payment routing rules and configurations.
+
+**Fields:**
+- `id` (BigInt, Primary Key) - Routing rule identifier
+- `connector_id` (BigInt, Optional) - Target connector ID
+- `user_id` (BigInt) - Foreign key to User table
+- `user_profile_id` (BigInt) - Foreign key to UserProfile table
+- `name` (String, VarChar(255)) - Routing rule name
+- `priority` (Int, SmallInt) - Rule priority
+- `config` (Json) - Routing configuration
+- `by_admin` (Boolean, Default: false) - Admin-created rule flag
+- `status` (Boolean, Default: false) - Active status
+- `is_cascade` (Boolean, Default: false) - Cascading rule flag
+- `routing_for` (ConnectorType, Default: CARD) - Payment method
+- `split_enable` (Boolean, Default: false) - Payment splitting enabled
+- `split_config` (Json, JsonB) - Split configuration
+- `is_success_transaction` (Boolean, Default: false) - Success transaction routing
+
+### 2. Cascading Table (`cascading`)
+**Description:** Manages cascading rules for failed transaction retry logic.
+
+**Fields:**
+- `id` (BigInt, Primary Key) - Cascading rule identifier
+- `user_id` (BigInt) - Foreign key to User table
+- `user_profile_id` (BigInt) - Foreign key to UserProfile table
+- `connector_id` (BigInt, Optional) - Target connector
+- `config` (Json, JsonB) - Cascading configuration
+- `name` (String, VarChar(191)) - Rule name
+- `duration` (String, VarChar(191)) - Time duration
+- `type` (CascadingType Enum) - Cascading type (DECLINED/NUMBER/TIMEWISE/AMOUNT)
+- `status` (Boolean, Default: false) - Active status
+- `priority` (Int, SmallInt) - Rule priority
+- `current_mid` (Int, SmallInt) - Current merchant ID
+- `cascading_for` (Int, SmallInt) - Payment method (1=CARD, 2=UPI, 3=CRYPTO, 4=APM)
+
+---
+
+## RP USER SCHEMA (rpUser.prisma)
+
+### 1. RpUser Table (`rp_users`)
+**Description:** Referral Partner users who refer merchants to the platform.
+
+**Fields:**
+- `id` (Int, Primary Key) - RP user identifier
+- `parent_id` (Int, Optional) - Hierarchical RP relationship
+- `referral_code` (String, Unique, VarChar(20)) - Unique referral code
+- `name` (String, VarChar(190)) - RP name
+- `email` (String, Unique, VarChar(190)) - RP email
+- `entity_type` (RPEntity Enum, Optional) - RP entity type (INDIVIDUAL/COMPANY)
+- `is_kyc_completed` (Int, SmallInt) - KYC status
+- `video_kyc_required` (Boolean, Default: true) - Video KYC requirement
+- `profile_step` (Int, SmallInt) - Onboarding step
+- `agreement_status` (Int, SmallInt) - Agreement status
+
+### 2. RpUserKyc Table (`rp_user_kyc`)
+**Description:** KYC information for referral partners.
+
+**Fields:**
+- `id` (Int, Primary Key) - KYC record identifier
+- `rp_user_id` (Int, Unique) - Foreign key to RpUser table
+- `entity_type` (RPEntity Enum) - Entity type
+- `name` (String, VarChar(191)) - Legal name
+- `website` (String, VarChar(191)) - Business website
+- `registration_number` (String, VarChar(191)) - Registration number
+- `bank_name` (String, VarChar(190)) - Settlement bank name
+- `account_number` (String, VarChar(20)) - Bank account number
+- `volume_currency` (String) - Expected volume currency
+- `volume_value` (String) - Expected transaction volume
+
+---
+
+## TELEGRAM BOT SCHEMA (telegramBot.prisma)
+
+### 1. TelegramGroup Table (`telegram_group`)
+**Description:** Manages Telegram groups for notifications and support.
+
+**Fields:**
+- `id` (Int, Primary Key) - Group identifier
+- `user_id` (BigInt) - Foreign key to User table
+- `group_name` (String, Unique, VarChar(255)) - Telegram group name
+- `status` (Boolean, Default: true) - Active status
+
+### 2. TelegramConversations Table (`telegram_conversations`)
+**Description:** Logs AI conversations through Telegram bot interface.
+
+**Fields:**
+- `id` (BigInt, Primary Key) - Conversation identifier
+- `telegram_group_id` (Int) - Foreign key to TelegramGroup
+- `chat_id` (String, VarChar(255)) - Telegram chat identifier
+- `content` (Json, JsonB) - Conversation content
+- `token_usage` (Json, JsonB) - AI token usage
+
+---
+
+## TICKET SCHEMA (ticket.prisma)
+
+### 1. Ticket Table (`tickets`)
+**Description:** Customer support ticket management system.
+
+**Fields:**
+- `id` (BigInt, Primary Key) - Ticket identifier
+- `ticket_id` (String, Unique, VarChar(36)) - External ticket reference
+- `user_id` (BigInt) - Foreign key to User table
+- `title` (String, VarChar(191)) - Ticket title
+- `description` (String, Text) - Issue description
+- `attachments` (String Array) - Attached files
+- `department` (Department Enum) - Department (TECHNICAL/FINANCE/CUSTOMER_SERVICE)
+- `status` (Int, SmallInt) - Ticket status (0=pending, 1=closed)
+
+### 2. TicketReply Table (`ticket_replies`)
+**Description:** Stores replies and communications within support tickets.
+
+**Fields:**
+- `id` (BigInt, Primary Key) - Reply identifier
+- `ticket_id` (BigInt) - Foreign key to Ticket table
+- `role` (ReplierRole Enum) - Replier role (USER/ADMIN)
+- `message` (String, Text) - Reply message
+- `attachments` (String Array) - Attached files
+
+---
+
+## TRANSACTION SCHEMA (transaction.prisma)
+
+### 1. Transaction Table (`transactions`)
+**Description:** Core transaction processing records with comprehensive payment data.
+
+**Key Fields:**
+- `id` (BigInt, Primary Key) - Transaction identifier
+- `user_id` (BigInt) - Foreign key to User table
+- `profile_id` (BigInt) - Foreign key to UserProfile table
+- `connector_id` (Int) - Foreign key to Connector table
+- `transaction_id` (String, Unique, VarChar(20)) - System transaction ID
+- `order_id` (String, VarChar(50)) - Merchant order reference
+- `amount` (Decimal, 10,2) - Transaction amount
+- `currency` (String, VarChar(5)) - Transaction currency
+- `status` (Int, SmallInt) - Transaction status (0=Declined, 1=Success, 2=Init, 3=Pending, 4=Redirect, 5=blocked, 6=Abandoned)
+- `transaction_type` (Int, SmallInt) - Payment type (1=Card, 2=Crypto, 3=UPI, 4=APM)
+- `card_number` (String, VarChar(20)) - Masked card number
+- `card_type` (Int, SmallInt) - Card type (1=Visa, 2=MasterCard, etc.)
+- `crypto_amount` (Decimal, 36,18) - Cryptocurrency amount
+- `crypto_currency` (String, VarChar(5)) - Crypto currency code
+- `ramp_type` (RampType Enum) - Crypto ramp type (ONRAMP/OFFRAMP/SWAP)
+- `refund_date` (DateTime, Optional) - Refund processing date
+- `chargeback_date` (DateTime, Optional) - Chargeback date
+- `suspicious_date` (DateTime, Optional) - Suspicious flag date
+
+### 2. TransactionLogs Table (`transaction_logs`)
+**Description:** Detailed logs of transaction processing steps and API interactions.
+
+**Fields:**
+- `id` (BigInt, Primary Key) - Log entry identifier
+- `transaction_id` (String, VarChar(30)) - Transaction reference
+- `status` (Int, SmallInt) - Processing status
+- `type` (String, VarChar(30)) - Log type
+- `payload` (Json, JsonB) - Request payload
+- `response` (Json, JsonB) - Response data
+- `webhook` (Json, JsonB) - Webhook data
+- `error` (String, Text) - Error information
+
+### 3. TransactionWebhookLogs Table (`transaction_webhook_logs`)
+**Description:** Tracks webhook delivery attempts and responses.
+
+**Fields:**
+- `id` (BigInt, Primary Key) - Webhook log identifier
+- `transaction_id` (String, Unique, VarChar(30)) - Transaction reference
+- `webhook_url` (String, Text) - Destination webhook URL
+- `payload` (Json, JsonB) - Webhook payload
+- `status` (Int, SmallInt) - Delivery status (0=failed, 1=success, 2=pending)
+- `response` (Json, JsonB) - Webhook response
+- `sent_count` (Int, SmallInt) - Delivery attempt count
+- `retry_count` (Int, SmallInt) - Retry attempt count
+
+---
+
+## WALLET SCHEMA (wallet.prisma)
+
+### 1. Wallet Table (`wallets`)
+**Description:** User wallet management for different payment methods and currencies.
+
+**Fields:**
+- `id` (Int, Primary Key) - Wallet identifier
+- `wallet_id` (String, Unique, VarChar(20)) - External wallet reference
+- `user_id` (BigInt) - Foreign key to User table
+- `profile_id` (BigInt, Optional) - Foreign key to UserProfile table
+- `provider_id` (Int) - Foreign key to Provider table
+- `connector_id` (Int) - Foreign key to Connector table
+- `currency` (String, VarChar(5)) - Wallet currency
+- `amount` (Decimal, Default: 0.0, 10,2) - Current balance
+- `status` (Int, SmallInt) - Wallet status (0=rejected, 1=approved, 2=pending, 3=rates assigned)
+- `payment_method` (PaymentType Enum) - Payment method (CARD/UPI/BANK)
+- `rates` (Json, JsonB) - Processing rates
+
+### 2. WalletTransaction Table (`wallet_transactions`)
+**Description:** Transaction records for wallet-based payments and operations.
+
+**Fields:**
+- `id` (Int, Primary Key) - Wallet transaction identifier
+- `wallet_id` (String, VarChar(20)) - Foreign key to Wallet
+- `user_id` (BigInt) - Foreign key to User table
+- `transaction_id` (String, Unique, VarChar(30)) - Transaction reference
+- `amount` (Decimal, 10,2) - Transaction amount
+- `currency` (String, VarChar(5)) - Transaction currency
+- `status` (Int, SmallInt) - Transaction status
+- `transaction_purpose` (TransactionPurpose Enum) - Purpose (REFUND/WITHDRAWAL/TOPUP)
+- `fee` (Decimal, 10,2) - Transaction fee
+- `fee_in_usd` (Decimal, 10,2) - Fee in USD
+
+---
+
+## ENUMS AND TYPES
+
+### Entity Enums
+- `Entity` - INDIVIDUAL, PARTNERSHIP, COMPANY
+- `RPEntity` - INDIVIDUAL, COMPANY
+- `UserAssociateRole` - PARTNER, DIRECTOR
+- `RPAssociateRole` - DIRECTOR
+
+### Payment Enums
+- `ConnectorType` - CARD, UPI, CRYPTO, APM
+- `ConnectorFlowType` - PAYIN, PAYOUT
+- `PaymentType` - CARD, UPI, BANK
+- `RampType` - ONRAMP, OFFRAMP, SWAP
+- `TransactionPurpose` - REFUND, WITHDRAWAL, TOPUP
+
+### System Enums
+- `PermissionType` - ADMIN, USER, RPUSER
+- `NotificationTypes` - Various notification types
+- `DisputeType` - CHARGEBACK, REFUND, SUSPICIOUS
+- `FlagAction` - APPLIED, REMOVED
+- `ReplierRole` - USER, ADMIN
+- `Department` - TECHNICAL, FINANCE, CUSTOMER_SERVICE
+
+### Status Enums
+- `SettlementType` - CRYPTO, BANK
+- `RatesType` - NORMAL, TIERED
+- `CascadingType` - DECLINED, NUMBER, TIMEWISE, AMOUNT
+- `PayoutType` - NORMAL, MANUAL
+- `InvoiceRecurringType` - EVERY_WEEK, EVERY_TWO_WEEKS, EVERY_THREE_WEEKS, EVERY_MONTH
+
+---
+
+This comprehensive schema report provides complete coverage of all database tables, their relationships, and functionality within the payment processing system. The schema supports multi-currency transactions, multiple payment methods, comprehensive KYC compliance, intelligent routing, risk management, and automated payout calculations across traditional and cryptocurrency payment processing.
