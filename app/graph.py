@@ -34,6 +34,7 @@ def get_vectorstore():
 
 
 # 1. Define state
+
 class GraphState(TypedDict):
     question: str
     userIntent:str
@@ -45,69 +46,51 @@ class GraphState(TypedDict):
     last_intent: Optional[str]
     last_answer: Optional[str]
 
-class UserIntent(BaseClass):
-    intent: str = Field(description="Either sql query or paymentlink generation")
+
+
+# llm structurered output 
+
+class IntentAndContext(BaseClass):
+    intent: str
+    is_follow_up: bool
+    rewritten_question: Optional[str]
 
 class StructuredOutput(BaseClass):
     description: str = Field(description="The query description")
     answer: str = Field(description="The Postgress query ")
 
-# follo-up schema 
-class FollowUpDecision(BaseClass):
-    is_follow_up: bool = Field(description="True if question depends on previous context")
-    rewritten_question: Optional[str] = Field(
-        description="Standalone rewritten question if follow-up"
-    )
-
 
 # 2. LLM (created ONCE)
 llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
+    model="gemini-2.5-flash-lite",
     temperature=0.7
 )
 
-def contextResolverNode(state: GraphState) -> GraphState:
-    history = "\n".join(state.get("chat_history", []))
 
+# 3. Node function
+
+def intentAndContextNode(state: GraphState) -> GraphState:
     prompt = f"""
-    You are a conversation-aware assistant.
-
-    Conversation so far:
-    {history}
+    Conversation:
+    {state.get("chat_history", [])}
 
     User question:
     {state["question"]}
 
     Decide:
-    - Is this question a follow-up?
-    - If yes, rewrite it as a standalone question using the context.
+    - intent: sql query OR payment link generation
+    - is_follow_up
+    - rewritten standalone question if follow-up
     """
 
-    response = llm.with_structured_output(FollowUpDecision).invoke(prompt)
+    result = llm.with_structured_output(IntentAndContext).invoke(prompt)
 
     return {
-        "question": response.rewritten_question if response.is_follow_up else state["question"],
-        "rewritten_question": response.rewritten_question,
+        "userIntent": result.intent,
+        "question": result.rewritten_question or state["question"],
         "chat_history": state.get("chat_history", []) + [state["question"]],
-        "last_intent": state.get("last_intent"),
-        "last_answer": state.get("last_answer"),
+        "last_intent": result.intent
     }
-
-def getUserIntent(state: GraphState) -> GraphState:
-
-    # if follow up question, use last intent
-    if state.get("rewritten_question") and state.get("last_intent"):
-        return {
-            "userIntent": state["last_intent"]
-        }
-    
-    llmResponse = llm.with_structured_output(UserIntent).invoke(state["question"])
-    return {
-        "userIntent": llmResponse.intent,
-       
-    }
-
-# 3. Node function
 
 def conditionalUserIntent(state: GraphState) :
     if state["userIntent"] == "sql query":
@@ -122,7 +105,10 @@ def paymentLinkGeneratorNode(state: GraphState) -> GraphState:
     return {
         "question": state["question"],
         "answer": "Payment link generation is not implemented yet. eg: https://paymentlink.com/xyz",
-        "description": ""
+        "description": "This is the sample test payment link ",
+        "last_intent": "payment link generation",
+        "last_answer": "Payment link generation is not implemented yet. eg: https://paymentlink.com/xyz",
+        "chat_history": state["chat_history"]
     }   
 
 def sqlQueryNode(state: GraphState) -> GraphState:
@@ -167,16 +153,13 @@ def sqlQueryNode(state: GraphState) -> GraphState:
 # 4. Build graph
 builder = StateGraph(GraphState)
 
-builder.add_node("contextResolver", contextResolverNode)
-builder.add_node("userIntent", getUserIntent)
+builder.add_node("userIntent", intentAndContextNode)
 builder.add_node("queryGenerator", sqlQueryNode)
 builder.add_node("paymentLinkGenerator", paymentLinkGeneratorNode)
 
-builder.set_entry_point("contextResolver")
+builder.set_entry_point("userIntent")
 
-builder.add_edge("contextResolver", "userIntent")
-
-# CONDITIONAL ROUTING (correct way)
+# CONDITIONAL ROUTING 
 builder.add_conditional_edges(
     "userIntent",
     conditionalUserIntent,
