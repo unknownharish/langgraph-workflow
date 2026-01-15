@@ -18,4 +18,4 @@ def ask(req: AskRequest):
     result = graph.invoke({
         "question": req.question
     })
-    return {"answer": result["answer"]}
+    return {"answer": result["answer"],"description": result["description"]}
