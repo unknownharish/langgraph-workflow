@@ -1,4 +1,4 @@
-from typing import TypedDict,List, Optional
+from typing import TypedDict,List, Optional,Annotated
 from pathlib import Path
 from langgraph.graph import StateGraph, END
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -6,6 +6,7 @@ from pydantic import BaseModel as BaseClass, Field
 from langchain_community.document_loaders import TextLoader
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
+from langgraph.checkpoint.memory import MemorySaver
 
 
 # Load documents
@@ -14,6 +15,9 @@ SCHEMA_FILE = BASE_DIR / "schema_data.txt"
 
 loader = TextLoader(str(SCHEMA_FILE))
 documents = loader.load()
+
+
+
 
 # Create embeddings
 embeddings = HuggingFaceEmbeddings(
@@ -33,18 +37,19 @@ def get_vectorstore():
     return vectorstore
 
 
-# 1. Define state
 
-# class GraphState(TypedDict):
-#     question: str
-#     userIntent:str
-#     answer: str
-#     description: str
+# reducer function 
+MAX_HISTORY = 10
 
-#     # conversational memory
-#     chat_history: list[str]
-#     last_intent: Optional[str]
-#     last_answer: Optional[str]
+def history_reducer(old, new):
+    old = old or []
+    if not isinstance(old, list):
+        old = [old]
+    if not isinstance(new, list):
+        new = [new]
+    return (old + new)[-MAX_HISTORY:]
+
+
 
 class ConversationTurn(TypedDict):
     question: str
@@ -58,8 +63,8 @@ class GraphState(TypedDict):
     userIntent: Optional[str]
     answer: Optional[str]
     description: Optional[str]
+    history: Annotated[List[ConversationTurn], history_reducer]
 
-    history: List[ConversationTurn]
 
 
 
@@ -77,32 +82,36 @@ class StructuredOutput(BaseClass):
 
 # 2. LLM (created ONCE)
 llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash-lite",
+    model="gemini-2.5-flash",
     temperature=0.7
 )
 
 
 # utility function 
-MAX_HISTORY = 10
 
-def update_history(
-    history: List[ConversationTurn],
-    question: str,
-    intent: str,
-    answer: str
-) -> List[ConversationTurn]:
-    new_history = history + [{
-        "question": question,
-        "intent": intent,
-        "answer": answer
-    }]
-    return new_history[-MAX_HISTORY:]
+# def update_history(
+#     history: List[ConversationTurn],
+#     question: str,
+#     intent: str,
+#     answer: str
+# ) -> List[ConversationTurn]:
+#     new_history = history + [{
+#         "question": question,
+#         "intent": intent,
+#         "answer": answer
+#     }]
+#     return new_history[-MAX_HISTORY:]
 
 
 
 # 3. Node function
 
 def intent_context_node(state: GraphState) -> GraphState:
+
+#     print("memory",memory.get({
+#     "configurable": {"thread_id": "harish"}
+# }))
+    
     history_text = "\n".join(
         f"User: {turn['question']}\nIntent: {turn['intent']}\nAnswer: {turn['answer']}"
         for turn in state.get("history", [])
@@ -149,12 +158,11 @@ def paymentLinkGeneratorNode(state: GraphState) -> GraphState:
 
     answer = "https://paymentlink.com/xyz"
 
-    history = update_history(
-        state.get("history", []),
-        state["question"],
-        "payment link",
-        answer
-    )
+    history = [{
+       "question": state["question"],
+       "intent": "payment link",
+       "answer": answer
+    }]
 
     return {
         **state,
@@ -201,12 +209,11 @@ def sqlQueryNode(state: GraphState) -> GraphState:
     llmStructured = llm.with_structured_output(StructuredOutput)
 
     response = llmStructured.invoke(prompt)
-    history = update_history(
-        state.get("history", []),
-        state["question"],
-        "sql query",
-        response.answer
-    )
+    history = [{
+        "question": state["question"],
+        "intent": "sql query",
+        "answer": response.answer
+    }]
     return {
         **state,
         "answer": response.answer,
@@ -236,4 +243,6 @@ builder.add_conditional_edges(
 builder.add_edge("queryGenerator", END)
 builder.add_edge("paymentLinkGenerator", END)
 
-graph = builder.compile()
+# memory saver 
+memory = MemorySaver()
+graph = builder.compile(checkpointer=memory)
