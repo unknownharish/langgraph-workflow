@@ -7,6 +7,10 @@ from langchain_community.document_loaders import TextLoader
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langgraph.checkpoint.memory import MemorySaver
+from sqlalchemy import create_engine, text
+
+POSTGRES_URL = "postgresql+psycopg2://user:password@localhost:5432/paynewtest"
+engine = create_engine(POSTGRES_URL)
 
 
 # Load documents
@@ -23,6 +27,12 @@ documents = loader.load()
 embeddings = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
+
+def get_db_connection():
+    return engine.connect()
+
+
+
 
 vectorstore = None
 
@@ -85,23 +95,6 @@ llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
     temperature=0.7
 )
-
-
-# utility function 
-
-# def update_history(
-#     history: List[ConversationTurn],
-#     question: str,
-#     intent: str,
-#     answer: str
-# ) -> List[ConversationTurn]:
-#     new_history = history + [{
-#         "question": question,
-#         "intent": intent,
-#         "answer": answer
-#     }]
-#     return new_history[-MAX_HISTORY:]
-
 
 
 # 3. Node function
@@ -220,6 +213,36 @@ def sqlQueryNode(state: GraphState) -> GraphState:
         "description": response.description, #query description
         "history": history
      }
+    
+    
+
+def sqlQueryExecutorNode(state: GraphState) -> GraphState:
+    query = state["answer"]  
+
+    try:
+            conn = get_db_connection()
+            result = conn.execute(text(query))
+            rows = result.fetchall()
+            columns = result.keys()
+
+            data = [dict(zip(columns, row)) for row in rows]
+
+    except Exception as e:
+        data = {"error": str(e)}
+
+    history = [{
+        "question": state["question"],
+        "intent": "sql query",
+        "answer": query
+    }]
+
+    return {
+        **state,
+        "description": "Query executed successfully",
+        "answer": data,   # now answer is actual DB result
+        "history": history
+    }
+    
 
 # 4. Build graph
 builder = StateGraph(GraphState)
@@ -227,6 +250,7 @@ builder = StateGraph(GraphState)
 builder.add_node("userIntent", intent_context_node)
 builder.add_node("queryGenerator", sqlQueryNode)
 builder.add_node("paymentLinkGenerator", paymentLinkGeneratorNode)
+builder.add_node("queryExecutor", sqlQueryExecutorNode)
 
 builder.set_entry_point("userIntent")
 
@@ -240,7 +264,9 @@ builder.add_conditional_edges(
     }
 )
 
-builder.add_edge("queryGenerator", END)
+builder.add_edge("queryGenerator", "queryExecutor")
+builder.add_edge("queryExecutor", END)
+
 builder.add_edge("paymentLinkGenerator", END)
 
 # memory saver 
